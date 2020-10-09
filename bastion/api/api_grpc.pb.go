@@ -129,5 +129,5 @@ var _Bastion_serviceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api.proto",
+	Metadata: "bastion/api/api.proto",
 }

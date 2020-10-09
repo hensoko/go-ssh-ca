@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"go-ssh-ca/api"
 	"go-ssh-ca/bastion"
+	"go-ssh-ca/bastion/api"
 	"log"
 	"net"
 	"os"

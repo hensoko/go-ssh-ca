@@ -3,7 +3,7 @@ package bastion
 import (
 	"context"
 	"fmt"
-	"go-ssh-ca/api"
+	"go-ssh-ca/bastion/api"
 	"sync"
 	"time"
 
@@ -19,6 +19,7 @@ type User struct {
 type Bastion struct {
 	api.UnimplementedBastionServer
 
+	c          Config
 	l          *zerolog.Logger
 	sessions   map[string]User // TODO: not persistent
 	sessionMux *sync.RWMutex
@@ -43,7 +44,7 @@ func (b *Bastion) getSession(sessionID uuid.UUID) (user *User, err error) {
 	return &userTmp, nil
 }
 
-func (b *Bastion) createSession(username string) (*uuid.UUID, error) {
+func (b *Bastion) _authenticate(username string, password string) (*uuid.UUID, error) {
 	sessionID := uuid.New()
 
 	b.sessionMux.Lock()
@@ -63,7 +64,7 @@ func (b Bastion) Authenticate(ctx context.Context, in *api.AuthenticateRequest) 
 
 	// TODO: verify username and password
 
-	sessionID, err := b.createSession(in.GetUsername())
+	sessionID, err := b._authenticate(in.GetUsername(), in.GetPassword())
 	if err != nil {
 		return nil, fmt.Errorf("authentication failed: %s", err)
 	}

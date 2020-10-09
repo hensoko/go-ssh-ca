@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"go-ssh-ca/api"
+	"go-ssh-ca/bastion/api"
 	"log"
 
 	"google.golang.org/grpc"

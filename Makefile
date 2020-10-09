@@ -1,4 +1,4 @@
 .PHONY: api
 
 api:
-	protoc -I api/ --go-grpc_out=api api/api.proto
+	protoc --go_out=bastion/api --go-grpc_out=bastion/api bastion/api/api.proto
