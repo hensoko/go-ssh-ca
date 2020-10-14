@@ -3,6 +3,7 @@ module go-ssh-ca
 go 1.15
 
 require (
+	github.com/cloudflare/cfssl v1.4.1
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.2
 	github.com/rs/zerolog v1.20.0

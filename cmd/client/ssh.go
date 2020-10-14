@@ -1,7 +1,10 @@
 package main
 
 import (
-	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -15,7 +18,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func newSSH(remoteAddress string) error {
+func newSSH(username string, remoteAddress string) error {
 	homeDir := os.Getenv("HOME")
 	if len(homeDir) == 0 {
 		return fmt.Errorf("HOME env not set")
@@ -39,7 +42,7 @@ func newSSH(remoteAddress string) error {
 	// implementation of AuthMethod via the Auth field in ClientConfig,
 	// and provide a HostKeyCallback.newSsh
 	config := &ssh.ClientConfig{
-		User: "username",
+		User: username,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(privateKeys...),
 		},
@@ -51,22 +54,62 @@ func newSSH(remoteAddress string) error {
 	}
 	defer client.Close()
 
-	// Each ClientConn can support multiple interactive sessions,
-	// represented by a Session.
-	session, err := client.NewSession()
-	if err != nil {
-		log.Fatal("Failed to create session: ", err)
-	}
-	defer session.Close()
+	log.Printf("Connected to %s\n", remoteAddress)
 
-	// Once a Session is created, you can execute a single command on
-	// the remote side using the Run method.
-	var b bytes.Buffer
-	session.Stdout = &b
-	if err := session.Run("/usr/bin/whoami"); err != nil {
-		log.Fatal("Failed to run: " + err.Error())
+	// generate session key after connection is established
+	log.Printf("Generating Session Key... ")
+	sessionKeyPath, err := generateSessionKey(sshBaseDir)
+	if err != nil {
+		log.Println("Failed")
+		return err
 	}
-	fmt.Println(b.String())
+	log.Println("Successful")
+
+	log.Printf("Reading Session Key... ")
+	sessionKey, err := readSessionKey(sessionKeyPath)
+	if err != nil {
+		log.Println("Failed")
+		return err
+	}
+	log.Println("Successful")
+
+	sessionPublicKeyBytes := sessionKey.PublicKey().Marshal()
+
+	channel, reqs, err := client.OpenChannel("sign-public-channel", sessionPublicKeyBytes)
+	if err != nil {
+		return fmt.Errorf("ssh: cannot open channel: %s", err)
+	}
+
+	go func() {
+		for req := range reqs {
+			// default, preserving OpenSSH behaviour
+			req.Reply(false, nil)
+		}
+	}()
+
+	l, err := channel.Write([]byte("bla"))
+	if err != nil {
+		return err
+	}
+
+	log.Println(l)
+
+	//// Each ClientConn can support multiple interactive sessions,
+	//// represented by a Session.
+	//session, err := client.NewSession()
+	//if err != nil {
+	//	log.Fatal("Failed to create session: ", err)
+	//}
+	//defer session.Close()
+	//
+	//// Once a Session is created, you can execute a single command on
+	//// the remote side using the Run method.
+	//var b bytes.Buffer
+	//session.Stdout = &b
+	//if err := session.Run("/usr/bin/whoami"); err != nil {
+	//	log.Fatal("Failed to run: " + err.Error())
+	//}
+	//fmt.Println(b.String())
 
 	return nil
 }
@@ -105,4 +148,64 @@ func readSSHPrivateKeys(baseDir string) ([]ssh.Signer, error) {
 	}
 
 	return privateKeys, nil
+}
+
+func generateSessionKey(baseDir string) (sessionKeyFilename string, err error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return "", err
+	}
+
+	privBlock := pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}
+
+	// create temporary file and close it as we use ioutil package to write content to it
+	f, err := ioutil.TempFile(baseDir, "ssh-session-key")
+	if err != nil {
+		return "", err
+	}
+
+	sessionKeyFilename = f.Name()
+	publicKeyFilename := sessionKeyFilename + ".pub"
+	f.Close()
+
+	err = ioutil.WriteFile(sessionKeyFilename, pem.EncodeToMemory(&privBlock), 0600)
+	if err != nil {
+		return "", err
+	}
+
+	// create ssh public key from private key
+	publicRsaKey, err := ssh.NewPublicKey(privateKey.Public())
+	if err != nil {
+		return "", err
+	}
+
+	// marshal to authorized keys format
+	pubKeyBytes := ssh.MarshalAuthorizedKey(publicRsaKey)
+	err = ioutil.WriteFile(publicKeyFilename, pubKeyBytes, 0644)
+	if err != nil {
+		return "", err
+	}
+
+	return sessionKeyFilename, nil
+}
+
+func readSessionKey(sessionKeyPath string) (ssh.Signer, error) {
+	_, err := os.Stat(sessionKeyPath)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("session key file %q does not exist", sessionKeyPath)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	privateKeyBytes, err := ioutil.ReadFile(sessionKeyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return ssh.ParsePrivateKey(privateKeyBytes)
 }
