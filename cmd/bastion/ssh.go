@@ -86,10 +86,20 @@ func newSSH(listenAddress string, baseDir string) error {
 			// protocol intended. In the case of a shell, the type is
 			// "session" and ServerShell may be used to present a simple
 			// terminal interface.
-			if newChannel.ChannelType() != "session" {
+			switch newChannel.ChannelType() {
+			case "sign-public-key":
+				sessionPublicKey, err := ssh.ParsePublicKey(newChannel.ExtraData())
+				if err != nil {
+					newChannel.Reject(ssh.Prohibited, "invalid session key data")
+					continue
+				}
+
+				fmt.Printf("Got session key of type %s", sessionPublicKey.Type())
+
+			default:
 				newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-				continue
 			}
+
 			channel, requests, err := newChannel.Accept()
 			if err != nil {
 				log.Printf("Could not accept channel: %v", err)
