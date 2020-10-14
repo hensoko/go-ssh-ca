@@ -32,10 +32,6 @@ func newSSH(listenAddress string, baseDir string) error {
 	// An SSH server is represented by a ServerConfig, which holds
 	// certificate details and handles authentication of ServerConns.
 	config := &ssh.ServerConfig{
-		AuthLogCallback: func(conn ssh.ConnMetadata, method string, err error) {
-			log.Printf("New connection from %s using method %s", conn.LocalAddr().String(), method)
-		},
-
 		// Remove to disable public key auth.
 		PublicKeyCallback: func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
 			if authorizedKeysMap[c.User()] == nil {
@@ -58,12 +54,12 @@ func newSSH(listenAddress string, baseDir string) error {
 
 	// Once a ServerConfig has been configured, connections can be
 	// accepted.
-	log.Printf("Started bastion server on %s\n", listenAddress)
-
 	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		log.Fatal("failed to listen for connection: ", err)
 	}
+
+	log.Printf("started bastion server on %s\n", listenAddress)
 
 	for {
 		nConn, err := listener.Accept()
@@ -179,7 +175,9 @@ func readSSHHostKey(baseDir string) (ssh.Signer, error) {
 	_, err := os.Stat(hostKeyFile)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("ssh: host key file not found")
-	} else if err != nil {
+	}
+
+	if err != nil {
 		return nil, err
 	}
 
