@@ -59,6 +59,9 @@ func newSSH(username string, remoteAddress string) error {
 	// generate session key after connection is established
 	log.Printf("Generating Session Key... ")
 	sessionKeyPath, err := generateSessionKey(sshBaseDir)
+	defer os.Remove(sessionKeyPath)
+	defer os.Remove(sessionKeyPath + ".pub")
+
 	if err != nil {
 		log.Println("Failed")
 		return err
@@ -75,7 +78,7 @@ func newSSH(username string, remoteAddress string) error {
 
 	sessionPublicKeyBytes := sessionKey.PublicKey().Marshal()
 
-	channel, reqs, err := client.OpenChannel("sign-public-channel", sessionPublicKeyBytes)
+	channel, reqs, err := client.OpenChannel("sign-public-key", sessionPublicKeyBytes)
 	if err != nil {
 		return fmt.Errorf("ssh: cannot open channel: %s", err)
 	}
