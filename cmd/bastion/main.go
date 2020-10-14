@@ -1,33 +1,25 @@
 package main
 
 import (
-	"fmt"
-	"go-ssh-ca/bastion"
-	"go-ssh-ca/bastion/api"
 	"log"
-	"net"
 	"os"
-
-	"github.com/rs/zerolog"
-
-	"google.golang.org/grpc"
+	"path"
 )
 
 func main() {
-	// create a listener on TCP port 7777
-	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", 7777))
+	homeDir := os.Getenv("HOME")
+	if len(homeDir) == 0 {
+		log.Fatalf("ssh: cannot find homedir")
+	}
+
+	// TODO: use path from flag
+	baseDir := path.Join(homeDir, "projects", "priv", "go-ssh-ca", "_bastion")
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		log.Fatalf("base directory %q does not exist", baseDir)
+	}
+
+	err := newSSH(baseDir)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	} // create a server instance
-
-	log.Println("listening on 127.0.0.1:7777")
-
-	s := grpc.NewServer()
-	l := zerolog.New(os.Stderr)
-	b := bastion.NewBastion(&l)
-
-	api.RegisterBastionServer(s, b)
-
-	s.Serve(lis)
-	defer s.Stop()
+		log.Fatalf(err.Error())
+	}
 }
