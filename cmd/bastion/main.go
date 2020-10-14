@@ -18,7 +18,8 @@ func main() {
 		log.Fatalf("base directory %q does not exist", baseDir)
 	}
 
-	err := newSSH(baseDir)
+	// TODO: get listen address and port from flags
+	err := newSSH("127.0.0.1:2022", baseDir)
 	if err != nil {
 		log.Fatalf(err.Error())
 	}

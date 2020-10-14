@@ -7,17 +7,18 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
 const (
-	bastionAuthorizedKeysFile = "bastion_authorized_keys"
-	bastionHostKeyFile        = "bastion_host_key"
+	bastionAuthorizedKeysDir = "authorized_keys"
+	bastionHostKeyFile       = "bastion_host_key"
 )
 
-func newSSH(baseDir string) error {
+func newSSH(listenAddress string, baseDir string) error {
 	authorizedKeysMap, err := readSSHAuthorizedKeys(baseDir)
 	if err != nil {
 		return err
@@ -35,14 +36,13 @@ func newSSH(baseDir string) error {
 			log.Printf("New connection from %s using method %s", conn.LocalAddr().String(), method)
 		},
 
-		// Remove to disable password auth.
-		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
-			return nil, fmt.Errorf("password authentication is not supported")
-		},
-
 		// Remove to disable public key auth.
 		PublicKeyCallback: func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
-			if authorizedKeysMap[string(pubKey.Marshal())] {
+			if authorizedKeysMap[c.User()] == nil {
+				return nil, fmt.Errorf("unknown public key for %s", c.User())
+			}
+
+			if authorizedKeysMap[c.User()][string(pubKey.Marshal())] {
 				return &ssh.Permissions{
 					// Record the public key used for authentication.
 					Extensions: map[string]string{
@@ -58,93 +58,113 @@ func newSSH(baseDir string) error {
 
 	// Once a ServerConfig has been configured, connections can be
 	// accepted.
-	listener, err := net.Listen("tcp", "0.0.0.0:2022")
+	log.Printf("Started bastion server on %s\n", listenAddress)
+
+	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
 		log.Fatal("failed to listen for connection: ", err)
 	}
-	nConn, err := listener.Accept()
-	if err != nil {
-		log.Fatal("failed to accept incoming connection: ", err)
-	}
 
-	// Before use, a handshake must be performed on the incoming
-	// net.Conn.
-	conn, chans, reqs, err := ssh.NewServerConn(nConn, config)
-	if err != nil {
-		log.Fatal("failed to handshake: ", err)
-	}
-	log.Printf("logged in with key %s", conn.Permissions.Extensions["pubkey-fp"])
-
-	// The incoming Request channel must be serviced.
-	go ssh.DiscardRequests(reqs)
-
-	// Service the incoming Channel channel.
-	for newChannel := range chans {
-		// Channels have a type, depending on the application level
-		// protocol intended. In the case of a shell, the type is
-		// "session" and ServerShell may be used to present a simple
-		// terminal interface.
-		if newChannel.ChannelType() != "session" {
-			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+	for {
+		nConn, err := listener.Accept()
+		if err != nil {
+			log.Print("failed to accept incoming connection: ", err)
 			continue
 		}
-		channel, requests, err := newChannel.Accept()
+
+		// Before use, a handshake must be performed on the incoming
+		// net.Conn.
+		conn, chans, reqs, err := ssh.NewServerConn(nConn, config)
 		if err != nil {
-			log.Fatalf("Could not accept channel: %v", err)
+			log.Print("failed to handshake: ", err)
+			continue
 		}
+		log.Printf("%s logged in with key %s", conn.User(), conn.Permissions.Extensions["pubkey-fp"])
 
-		// Sessions have out-of-band requests such as "shell",
-		// "pty-req" and "env".  Here we handle only the
-		// "shell" request.
-		go func(in <-chan *ssh.Request) {
-			for req := range in {
-				req.Reply(req.Type == "shell", nil)
+		// The incoming Request channel must be serviced.
+		go ssh.DiscardRequests(reqs)
+
+		// Service the incoming Channel channel.
+		for newChannel := range chans {
+			// Channels have a type, depending on the application level
+			// protocol intended. In the case of a shell, the type is
+			// "session" and ServerShell may be used to present a simple
+			// terminal interface.
+			if newChannel.ChannelType() != "session" {
+				newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+				continue
 			}
-		}(requests)
+			channel, requests, err := newChannel.Accept()
+			if err != nil {
+				log.Printf("Could not accept channel: %v", err)
+				continue
+			}
 
-		term := terminal.NewTerminal(channel, "> ")
-
-		go func() {
-			defer channel.Close()
-			for {
-				line, err := term.ReadLine()
-				if err != nil {
-					break
+			// Sessions have out-of-band requests such as "shell",
+			// "pty-req" and "env".  Here we handle only the
+			// "shell" request.
+			go func(in <-chan *ssh.Request) {
+				for req := range in {
+					req.Reply(req.Type == "shell", nil)
 				}
-				fmt.Println(line)
-			}
-		}()
+			}(requests)
+
+			term := terminal.NewTerminal(channel, "> ")
+
+			go func() {
+				defer channel.Close()
+				for {
+					line, err := term.ReadLine()
+					if err != nil {
+						break
+					}
+
+					switch line {
+
+					}
+
+					fmt.Println(line)
+				}
+			}()
+		}
 	}
 
 	return nil
 }
 
-func readSSHAuthorizedKeys(baseDir string) (map[string]bool, error) {
-	authorizedKeysFile := path.Join(baseDir, bastionAuthorizedKeysFile)
-
-	_, err := os.Stat(authorizedKeysFile)
+func readSSHAuthorizedKeys(baseDir string) (map[string]map[string]bool, error) {
+	authorizedKeysDir := path.Join(baseDir, bastionAuthorizedKeysDir)
+	_, err := os.Stat(authorizedKeysDir)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("ssh: authorized keys file not found")
-	} else if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("authorized keys directory does not exist")
 	}
 
-	// TODO: check permissions of authorized keys file
+	authorizedKeysMap := map[string]map[string]bool{}
 
-	authorizedKeysBytes, err := ioutil.ReadFile(authorizedKeysFile)
-	if err != nil {
-		return nil, fmt.Errorf("ssh: failed to load authorized_keys, err: %v", err)
-	}
+	files, err := filepath.Glob(path.Join(baseDir, bastionAuthorizedKeysDir, "*"))
+	for _, authorizedKeyFile := range files {
+		_, user := filepath.Split(authorizedKeyFile)
 
-	authorizedKeysMap := map[string]bool{}
-	for len(authorizedKeysBytes) > 0 {
-		pubKey, _, _, rest, err := ssh.ParseAuthorizedKey(authorizedKeysBytes)
+		// TODO: check permissions of authorized keys file
+		authorizedKeysBytes, err := ioutil.ReadFile(authorizedKeyFile)
 		if err != nil {
-			log.Fatal(err)
+			return nil, fmt.Errorf("ssh: failed to load authorized_keys, err: %v", err)
 		}
 
-		authorizedKeysMap[string(pubKey.Marshal())] = true
-		authorizedKeysBytes = rest
+		for len(authorizedKeysBytes) > 0 {
+			pubKey, _, _, rest, err := ssh.ParseAuthorizedKey(authorizedKeysBytes)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if _, ok := authorizedKeysMap[user]; !ok {
+				authorizedKeysMap[user] = map[string]bool{}
+			}
+
+			authorizedKeysMap[user][string(pubKey.Marshal())] = true
+			authorizedKeysBytes = rest
+		}
+
 	}
 
 	if len(authorizedKeysMap) == 0 {
