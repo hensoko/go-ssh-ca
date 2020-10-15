@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	PublicKeySignatureSeparator = "."
-	SignatureSeparator          = ":"
+	PublicKeySignatureSeparator  = "."
+	SignatureFormatBlobSeparator = ":"
 )
 
 // SigningRequest contains a user and a public key and is transmitted to bastion / server to get signed
@@ -55,7 +55,7 @@ func NewSigningRequestFromString(s string) (out *SigningRequest, err error) {
 		return nil, err
 	}
 
-	signatureStringSplt := strings.Split(string(signatureBytes), SignatureSeparator)
+	signatureStringSplt := strings.Split(string(signatureBytes), SignatureFormatBlobSeparator)
 	if len(signatureStringSplt) != 2 {
 		return nil, fmt.Errorf("cannot parse request string: invalid format")
 	}
@@ -77,7 +77,7 @@ func (s *SigningRequest) String() (out string, err error) {
 	publicKeyBytes := s.PublicKey.Marshal()
 	publicKeyHex := base64.StdEncoding.EncodeToString(publicKeyBytes)
 
-	signatureString := fmt.Sprintf("%s%s%s", s.Signature.Format, SignatureSeparator, base64.StdEncoding.EncodeToString(s.Signature.Blob))
+	signatureString := fmt.Sprintf("%s%s%s", s.Signature.Format, SignatureFormatBlobSeparator, base64.StdEncoding.EncodeToString(s.Signature.Blob))
 	signatureHex := base64.StdEncoding.EncodeToString([]byte(signatureString))
 
 	out = publicKeyHex + PublicKeySignatureSeparator + signatureHex
