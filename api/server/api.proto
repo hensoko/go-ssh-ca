@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = ".;server";
+
+message Error {
+  uint32 code = 1;
+  string message = 2;
+}
+
+// Bastion
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string message = 1;
+}
+
+// Client
+message SignUserPublicKeyRequest {
+  string ip = 1;
+  string username = 2;
+  string public_key = 3;
+  string public_key_signature = 4;
+}
+
+message SignUserPublicKeyResponse {
+  Error error = 1;
+  string certificate = 2;
+}
+
+service Server {
+  rpc SignUserPublicKey(SignUserPublicKeyRequest) returns (SignUserPublicKeyResponse) {};
+}

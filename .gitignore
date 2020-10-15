@@ -1,2 +1,4 @@
 /.idea
+
+/api/**/*.pb.go
 /_bastion
