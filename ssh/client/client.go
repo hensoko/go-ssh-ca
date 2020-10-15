@@ -106,7 +106,7 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return err
 	}
 
-	log.Printf("Sending signing request to bastion")
+	log.Printf("Sending signing request")
 	cmd := "sign-public-key " + string(requestBytes)
 	err = s.Run(cmd + "\n")
 	if err != nil {

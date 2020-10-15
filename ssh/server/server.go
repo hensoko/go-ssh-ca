@@ -31,7 +31,7 @@ func (s *Server) ListenAndServe(listenAddress string) error {
 		log.Fatal("failed to listen for connection: ", err)
 	}
 
-	log.Printf("started bastion server on %s\n", listenAddress)
+	log.Printf("started ssh server on %s\n", listenAddress)
 
 	for {
 		nConn, err := listener.Accept()
