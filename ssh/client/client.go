@@ -1,13 +1,13 @@
 package client
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"go-ssh-ca/ca"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -73,10 +73,6 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return err
 	}
 
-	stdout := bytes.Buffer{}
-	s.Stdout = &stdout   // Write Session Stdout to buffer
-	s.Stderr = os.Stderr // Route session Stderr to system Stderr
-
 	pubKey := sessionKey.PublicKey()
 	pubKeySignature, err := sessionKey.Sign(rand.Reader, pubKey.Marshal())
 	if err != nil {
@@ -91,15 +87,23 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 
 	log.Printf("Sending signing request")
 	cmd := "sign-public-key " + string(requestBytes)
-	err = s.Run(cmd + "\n")
+
+	stdout, err := s.StdoutPipe()
 	if err != nil {
-		return err
+		log.Fatalf(err.Error())
 	}
 
-	err = s.Wait()
-	if err != nil {
-		return err
+	buf := &strings.Builder{}
+	go io.Copy(buf, stdout)
+
+	err = s.Run(cmd)
+	if err != nil && err != io.EOF {
+		log.Fatalf(err.Error())
 	}
+
+	log.Printf("Connection closed")
+
+	log.Println(buf.String())
 
 	return nil
 }

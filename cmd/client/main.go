@@ -22,4 +22,6 @@ func main() {
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
+
+	os.Exit(0)
 }

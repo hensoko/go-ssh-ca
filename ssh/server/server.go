@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 type Server struct {
@@ -107,8 +106,6 @@ func (s *Server) handleChannels(chans <-chan ssh.NewChannel) {
 }
 
 func (s *Server) handleChannel(newChannel ssh.NewChannel) {
-	log.Printf("New Channel of type %s", newChannel.ChannelType())
-
 	if newChannel.ChannelType() != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
 	}
@@ -120,52 +117,57 @@ func (s *Server) handleChannel(newChannel ssh.NewChannel) {
 		return
 	}
 
-	go func(in <-chan *ssh.Request) {
-		for req := range in {
-			log.Printf("Got out-of-band request of type %s", req.Type)
-			// only handle shell requests
-			switch req.Type {
-			case "exec", "shell":
-				req.Reply(true, nil)
-
-			default:
+	go func(reqs <-chan *ssh.Request) {
+		for req := range reqs {
+			if req.Type != "exec" { // only handle exec requests
 				req.Reply(false, nil)
+				continue
 			}
+
+			log.Print("Handline exec request")
+			s.handleExec(channel, req)
 		}
 	}(requests)
+}
 
-	term := terminal.NewTerminal(channel, "")
+func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
+	if len(req.Payload) == 0 {
+		log.Print("ssh: invalid request: empty payload")
+		channel.Write([]byte("ssh: invalid request: empty payload\r\n"))
+		channel.Close()
+		return
+	}
 
-	go func() {
-		defer channel.Close()
+	// sanitize payload
+	pl := string(req.Payload[4:])
+	pl = strings.TrimSpace(pl)
 
-		for {
-			log.Print("Reading line...")
-			line, err := term.ReadLine()
-			if err != nil {
-				break
-			}
+	// split request payload to separate command from command payload
+	payloadSplt := strings.Split(pl, " ")
+	if len(payloadSplt) != 2 {
+		log.Printf("ssh: invalid request length: %d", len(payloadSplt))
+		channel.Write([]byte("ssh: invalid request\r\n"))
+		channel.Close()
+		return
+	}
 
-			lineSplitted := strings.SplitN(line, " ", 1)
+	cmd := payloadSplt[0]
+	payload := payloadSplt[1]
 
-			if len(lineSplitted) != 2 {
-				log.Printf("Invalied request length")
-			}
+	switch cmd {
+	case "sign-public-key":
+		log.Printf("Got sign-public-key request with payload: %s", payload)
+		channel.Write([]byte("blablablabla\r\n"))
+		channel.Close()
+		return
 
-			cmd := lineSplitted[0]
-			payload := lineSplitted[1]
-
-			switch cmd {
-
-			case "sign-public-key":
-				log.Printf("Got sign-public-key request with payload: %s", payload)
-				term.Write([]byte("blablabla"))
-
-			default:
-				log.Printf("Invalid command %s", line)
-			}
-		}
-	}()
+	default:
+		log.Printf("Invalid command %s", cmd)
+		channel.Write([]byte("Invalid command\r\n"))
+		channel.CloseWrite()
+		channel.Close()
+		return
+	}
 }
 
 func (s *Server) readSSHAuthorizedKeys() (map[string]map[string]bool, error) {
