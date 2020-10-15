@@ -16,7 +16,7 @@ jobs:
       - name: Lint Go Code
         run: |
           go get -u golang.org/x/lint/golint
-          make lint
+          go lint ./...
   build:
     strategy:
       matrix:
@@ -27,6 +27,8 @@ jobs:
           - ubuntu-latest
           - macos-latest
           - windows-latest
+    needs:
+      - lint
     runs-on: ${{ matrix.os }}
     steps:
     - name: Install Go
