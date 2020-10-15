@@ -35,29 +35,12 @@ func NewClient(c Config) *Client {
 }
 
 func (c *Client) Dial(username string, remoteAddress string) error {
-	privateKeys, err := c.readSSHPrivateKeys()
+	clientConfig, err := c.configure(username)
 	if err != nil {
 		return err
 	}
 
-	knownHostsCb, err := knownhosts.New(path.Join(c.c.BaseDir, "known_hosts"))
-	if err != nil {
-		return err
-	}
-
-	// An SSH client is represented with a ClientConn.
-	//
-	// To authenticate with the remote server you must pass at least one
-	// implementation of AuthMethod via the Auth field in ClientConfig,
-	// and provide a HostKeyCallback.newSsh
-	config := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(privateKeys...),
-		},
-		HostKeyCallback: knownHostsCb,
-	}
-	client, err := ssh.Dial("tcp", remoteAddress, config)
+	client, err := ssh.Dial("tcp", remoteAddress, clientConfig)
 	if err != nil {
 		log.Fatal("Failed to dial: ", err)
 	}
@@ -119,6 +102,33 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) configure(username string) (*ssh.ClientConfig, error) {
+	privateKeys, err := c.readSSHPrivateKeys()
+	if err != nil {
+		return nil, err
+	}
+
+	knownHostsCb, err := knownhosts.New(path.Join(c.c.BaseDir, "known_hosts"))
+	if err != nil {
+		return nil, err
+	}
+
+	// An SSH client is represented with a ClientConn.
+	//
+	// To authenticate with the remote server you must pass at least one
+	// implementation of AuthMethod via the Auth field in ClientConfig,
+	// and provide a HostKeyCallback.newSsh
+	config := &ssh.ClientConfig{
+		User: username,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(privateKeys...),
+		},
+		HostKeyCallback: knownHostsCb,
+	}
+
+	return config, nil
 }
 
 func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
