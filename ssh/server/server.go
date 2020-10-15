@@ -153,6 +153,7 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 	case "sign-public-key":
 		log.Printf("Got sign-public-key request")
 
+		// Parse signing request
 		sr, err := ca.NewSigningRequestFromString(payload)
 		if err != nil {
 			log.Printf("Cannot unmarshal payload: %s", err)
@@ -160,12 +161,15 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 			return
 		}
 
+		// Verify signature against public key
 		err = sr.PublicKey.Verify(sr.PublicKey.Marshal(), &sr.Signature)
 		if err != nil {
 			log.Printf("ssh: invalid request: signature invalid")
 			closeWrite("ssh: invalid request: invalid signature", channel)
 			return
 		}
+
+		// TODO: sign request and create response
 
 		closeWrite("blablablabla", channel)
 		return
