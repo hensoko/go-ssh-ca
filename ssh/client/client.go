@@ -80,13 +80,13 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 	}
 
 	log.Printf("Creating signing request")
-	requestBytes, err := ca.NewSigningRequest(sessionKey.PublicKey(), *pubKeySignature).Bytes()
+	signingRequestString, err := ca.NewSigningRequest(sessionKey.PublicKey(), *pubKeySignature).String()
 	if err != nil {
 		return err
 	}
 
 	log.Printf("Sending signing request")
-	cmd := "sign-public-key " + string(requestBytes)
+	cmd := "sign-public-key " + signingRequestString
 
 	stdout, err := s.StdoutPipe()
 	if err != nil {

@@ -1,17 +1,25 @@
 package ca
 
 import (
-	"encoding/json"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"strings"
 
 	"golang.org/x/crypto/ssh"
+)
+
+const (
+	PublicKeySignatureSeparator = "."
+	SignatureSeparator          = ":"
 )
 
 // SigningRequest contains a user and a public key and is transmitted to bastion / server to get signed
 type SigningRequest struct {
 	// PublicKey in authorized keys format
-	PublicKey ssh.PublicKey `json:"public_key"`
+	PublicKey ssh.PublicKey
 	// Signature verifies the integrity of the transmitted public key
-	Signature ssh.Signature `json:"signature"`
+	Signature ssh.Signature
 }
 
 func NewSigningRequest(publicKey ssh.PublicKey, signature ssh.Signature) *SigningRequest {
@@ -21,31 +29,58 @@ func NewSigningRequest(publicKey ssh.PublicKey, signature ssh.Signature) *Signin
 	}
 }
 
-func (s *SigningRequest) Bytes() ([]byte, error) {
-	bytes, err := json.Marshal(s)
+func NewSigningRequestFromString(s string) (out *SigningRequest, err error) {
+	out = &SigningRequest{}
+
+	dataSplt := strings.Split(s, PublicKeySignatureSeparator)
+	if len(dataSplt) != 2 {
+		log.Print("splitted data no 2")
+		return nil, fmt.Errorf("cannot parse request string: invalid format")
+	}
+
+	publicKeyHex := dataSplt[0]
+	publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyHex)
 	if err != nil {
 		return nil, err
 	}
 
-	return bytes, nil
+	out.PublicKey, err = ssh.ParsePublicKey(publicKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	signatureHex := dataSplt[1]
+	signatureBytes, err := base64.StdEncoding.DecodeString(signatureHex)
+	if err != nil {
+		return nil, err
+	}
+
+	signatureStringSplt := strings.Split(string(signatureBytes), SignatureSeparator)
+	if len(signatureStringSplt) != 2 {
+		return nil, fmt.Errorf("cannot parse request string: invalid format")
+	}
+
+	signatureBlob, err := base64.StdEncoding.DecodeString(signatureStringSplt[1])
+	if err != nil {
+		return nil, err
+	}
+
+	out.Signature = ssh.Signature{
+		Format: signatureStringSplt[0],
+		Blob:   signatureBlob,
+	}
+
+	return out, err
 }
 
-//func (s *SigningRequest) MarshalText() (text []byte, err error) {
-//	jBytes, err := json.Marshal(s)
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	base64.StdEncoding.Encode(text, jBytes)
-//	return text, nil
-//}
-//
-//func (s *SigningRequest) UnmarshalText(text []byte) (err error) {
-//	var jBytes []byte
-//	_, err = base64.StdEncoding.Decode(jBytes, text)
-//	if err != nil {
-//		return err
-//	}
-//
-//	return json.Unmarshal(jBytes, s)
-//}
+func (s *SigningRequest) String() (out string, err error) {
+	publicKeyBytes := s.PublicKey.Marshal()
+	publicKeyHex := base64.StdEncoding.EncodeToString(publicKeyBytes)
+
+	signatureString := fmt.Sprintf("%s%s%s", s.Signature.Format, SignatureSeparator, base64.StdEncoding.EncodeToString(s.Signature.Blob))
+	signatureHex := base64.StdEncoding.EncodeToString([]byte(signatureString))
+
+	out = publicKeyHex + PublicKeySignatureSeparator + signatureHex
+
+	return out, nil
+}
