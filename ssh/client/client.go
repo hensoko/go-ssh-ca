@@ -1,37 +1,46 @@
-package main
+package client
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"go-ssh-ca/ca"
 	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/crypto/ssh/knownhosts"
+	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-func newSSH(username string, remoteAddress string) error {
-	homeDir := os.Getenv("HOME")
-	if len(homeDir) == 0 {
-		return fmt.Errorf("HOME env not set")
+const (
+	SessionKeyBits = 2048
+)
+
+type Client struct {
+	c Config
+}
+
+func NewClient(c Config) *Client {
+	return &Client{
+		c: c,
 	}
+}
 
-	sshBaseDir := path.Join(homeDir, ".ssh")
-
-	privateKeys, err := readSSHPrivateKeys(sshBaseDir)
+func (c *Client) Dial(username string, remoteAddress string) error {
+	privateKeys, err := c.readSSHPrivateKeys()
 	if err != nil {
 		return err
 	}
 
-	knownHostsCb, err := knownhosts.New(path.Join(sshBaseDir, "known_hosts"))
+	knownHostsCb, err := knownhosts.New(path.Join(c.c.BaseDir, "known_hosts"))
 	if err != nil {
 		return err
 	}
@@ -58,7 +67,7 @@ func newSSH(username string, remoteAddress string) error {
 
 	// generate session key after connection is established
 	log.Printf("Generating Session Key... ")
-	sessionKeyPath, err := generateSessionKey(sshBaseDir)
+	sessionKeyPath, err := c.generateSessionKey()
 	defer os.Remove(sessionKeyPath)
 	defer os.Remove(sessionKeyPath + ".pub")
 
@@ -69,56 +78,51 @@ func newSSH(username string, remoteAddress string) error {
 	log.Println("Successful")
 
 	log.Printf("Reading Session Key... ")
-	sessionKey, err := readSessionKey(sessionKeyPath)
+	sessionKey, err := c.readSessionKey(sessionKeyPath)
 	if err != nil {
 		log.Println("Failed")
 		return err
 	}
 	log.Println("Successful")
 
-	sessionPublicKeyBytes := sessionKey.PublicKey().Marshal()
-
-	channel, reqs, err := client.OpenChannel("sign-public-key", sessionPublicKeyBytes)
-	if err != nil {
-		return fmt.Errorf("ssh: cannot open channel: %s", err)
-	}
-
-	go func() {
-		for req := range reqs {
-			// default, preserving OpenSSH behaviour
-			req.Reply(false, nil)
-		}
-	}()
-
-	l, err := channel.Write([]byte("bla"))
+	s, err := client.NewSession() // Create new SSH session
 	if err != nil {
 		return err
 	}
 
-	log.Println(l)
+	stdout := bytes.Buffer{}
+	s.Stdout = &stdout   // Write Session Stdout to buffer
+	s.Stderr = os.Stderr // Route session Stderr to system Stderr
 
-	//// Each ClientConn can support multiple interactive sessions,
-	//// represented by a Session.
-	//session, err := client.NewSession()
-	//if err != nil {
-	//	log.Fatal("Failed to create session: ", err)
-	//}
-	//defer session.Close()
-	//
-	//// Once a Session is created, you can execute a single command on
-	//// the remote side using the Run method.
-	//var b bytes.Buffer
-	//session.Stdout = &b
-	//if err := session.Run("/usr/bin/whoami"); err != nil {
-	//	log.Fatal("Failed to run: " + err.Error())
-	//}
-	//fmt.Println(b.String())
+	pubKey := sessionKey.PublicKey()
+	pubKeySignature, err := sessionKey.Sign(rand.Reader, pubKey.Marshal())
+	if err != nil {
+		return fmt.Errorf("ssh: unable to sign public key: %s", err)
+	}
+
+	log.Printf("Creating signing request")
+	requestBytes, err := ca.NewSigningRequest(sessionKey.PublicKey(), *pubKeySignature).Bytes()
+	if err != nil {
+		return err
+	}
+
+	log.Printf("Sending signing request to bastion")
+	cmd := "sign-public-key " + string(requestBytes)
+	err = s.Run(cmd + "\n")
+	if err != nil {
+		return err
+	}
+
+	err = s.Wait()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func readSSHPrivateKeys(baseDir string) ([]ssh.Signer, error) {
-	files, err := filepath.Glob(path.Join(baseDir, "id_rsa*"))
+func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
+	files, err := filepath.Glob(path.Join(c.c.BaseDir, "id_rsa*"))
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +157,8 @@ func readSSHPrivateKeys(baseDir string) ([]ssh.Signer, error) {
 	return privateKeys, nil
 }
 
-func generateSessionKey(baseDir string) (sessionKeyFilename string, err error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+func (c *Client) generateSessionKey() (sessionKeyFilename string, err error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, SessionKeyBits)
 	if err != nil {
 		return "", err
 	}
@@ -165,7 +169,7 @@ func generateSessionKey(baseDir string) (sessionKeyFilename string, err error) {
 	}
 
 	// create temporary file and close it as we use ioutil package to write content to it
-	f, err := ioutil.TempFile(baseDir, "ssh-session-key")
+	f, err := ioutil.TempFile(c.c.BaseDir, fmt.Sprintf("ssh-session-key_%d_", time.Now().Unix()))
 	if err != nil {
 		return "", err
 	}
@@ -195,7 +199,7 @@ func generateSessionKey(baseDir string) (sessionKeyFilename string, err error) {
 	return sessionKeyFilename, nil
 }
 
-func readSessionKey(sessionKeyPath string) (ssh.Signer, error) {
+func (c *Client) readSessionKey(sessionKeyPath string) (ssh.Signer, error) {
 	_, err := os.Stat(sessionKeyPath)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("session key file %q does not exist", sessionKeyPath)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"go-ssh-ca/ssh/server"
 	"log"
 	"os"
 	"path"
@@ -18,8 +19,14 @@ func main() {
 		log.Fatalf("base directory %q does not exist", baseDir)
 	}
 
+	s := server.NewServer(server.Config{
+		AuthorizedKeysDir: "authorized_keys",
+		BaseDir:           baseDir,
+		HostKeyFile:       "bastion_host_key",
+	})
+
 	// TODO: get listen address and port from flags
-	err := newSSH("127.0.0.1:2022", baseDir)
+	err := s.ListenAndServe("127.0.0.1:2022")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
