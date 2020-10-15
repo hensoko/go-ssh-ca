@@ -16,7 +16,7 @@ jobs:
       - name: Lint Go Code
         run: |
           go get -u golang.org/x/lint/golint
-          go lint ./...
+          golint ./...
   build:
     strategy:
       matrix:
