@@ -13,6 +13,7 @@ func main() {
 		log.Fatalf("HOME env not set")
 	}
 
+	// TODO: merge ssh.client package with ssh package
 	c := client.NewClient(client.Config{
 		BaseDir: path.Join(homeDir, ".ssh"),
 	})
