@@ -2,12 +2,12 @@ package ssh
 
 import (
 	"fmt"
-	"go-ssh-ca/ca"
 	"log"
 	"net"
 	"path"
 	"strings"
 
+	"github.com/hensoko/go-ssh-ca/ca"
 	"golang.org/x/crypto/ssh"
 )
 

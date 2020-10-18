@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	signerServer "go-ssh-ca/api/server"
-	"go-ssh-ca/ssh"
 	"log"
 	"os"
 	"path"
 
+	signerServer "github.com/hensoko/go-ssh-ca/api/server"
+	"github.com/hensoko/go-ssh-ca/ssh"
 	"google.golang.org/grpc"
 )
 

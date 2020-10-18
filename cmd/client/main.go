@@ -1,10 +1,11 @@
 package main
 
 import (
-	"go-ssh-ca/ssh"
 	"log"
 	"os"
 	"path"
+
+	"github.com/hensoko/go-ssh-ca/ssh"
 )
 
 func main() {
