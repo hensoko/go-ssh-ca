@@ -1,20 +1,27 @@
-package server
+package ssh
 
 import (
 	"fmt"
 	"go-ssh-ca/ca"
 	"log"
 	"net"
+	"path"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
 
-type Server struct {
-	c Config
+type ServerConfig struct {
+	AuthorizedKeysDir string
+	BaseDir           string
+	HostKeyFile       string
 }
 
-func NewServer(c Config) *Server {
+type Server struct {
+	c ServerConfig
+}
+
+func NewServer(c ServerConfig) *Server {
 	return &Server{
 		c: c,
 	}
@@ -59,12 +66,12 @@ func (s *Server) ListenAndServe(listenAddress string) error {
 }
 
 func (s *Server) configure() (*ssh.ServerConfig, error) {
-	authorizedKeysMap, err := s.readSSHAuthorizedKeys()
+	authorizedKeysMap, err := ReadSSHAuthorizedKeys(path.Join(s.c.BaseDir, s.c.AuthorizedKeysDir))
 	if err != nil {
 		return nil, err
 	}
 
-	hostKey, err := s.readSSHHostKey()
+	hostKey, err := ReadSSHHostKey(path.Join(s.c.BaseDir, s.c.HostKeyFile))
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"go-ssh-ca/ssh/client"
+	"go-ssh-ca/ssh"
 	"log"
 	"os"
 	"path"
@@ -14,7 +14,7 @@ func main() {
 	}
 
 	// TODO: merge ssh.client package with ssh package
-	c := client.NewClient(client.Config{
+	c := ssh.NewClient(ssh.ClientConfig{
 		BaseDir: path.Join(homeDir, ".ssh"),
 	})
 

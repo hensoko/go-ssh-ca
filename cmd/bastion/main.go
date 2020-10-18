@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	signerServer "go-ssh-ca/api/server"
-	"go-ssh-ca/ssh/server"
+	"go-ssh-ca/ssh"
 	"log"
 	"os"
 	"path"
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// TODO: merge ssh.server package with ssh package
-	s := server.NewServer(server.Config{
+	s := ssh.NewServer(ssh.ServerConfig{
 		AuthorizedKeysDir: "authorized_keys",
 		BaseDir:           baseDir,
 		HostKeyFile:       "bastion_host_key",

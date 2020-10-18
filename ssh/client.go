@@ -1,4 +1,4 @@
-package client
+package ssh
 
 import (
 	"crypto/rand"
@@ -20,15 +20,19 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
+type ClientConfig struct {
+	BaseDir string
+}
+
 const (
-	SessionKeyBits = 2048
+	ClientDefaultSessionKeyBits = 2048
 )
 
 type Client struct {
-	c Config
+	c ClientConfig
 }
 
-func NewClient(c Config) *Client {
+func NewClient(c ClientConfig) *Client {
 	return &Client{
 		c: c,
 	}
@@ -172,7 +176,7 @@ func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
 }
 
 func (c *Client) generateSessionKey() (sessionKeyFilename string, err error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, SessionKeyBits)
+	privateKey, err := rsa.GenerateKey(rand.Reader, ClientDefaultSessionKeyBits)
 	if err != nil {
 		return "", err
 	}

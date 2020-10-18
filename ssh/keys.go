@@ -1,4 +1,4 @@
-package server
+package ssh
 
 import (
 	"fmt"
@@ -11,8 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func (s *Server) readSSHAuthorizedKeys() (map[string]map[string]bool, error) {
-	authorizedKeysDir := path.Join(s.c.BaseDir, s.c.AuthorizedKeysDir)
+func ReadSSHAuthorizedKeys(authorizedKeysDir string) (map[string]map[string]bool, error) {
 	_, err := os.Stat(authorizedKeysDir)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("authorized keys directory does not exist")
@@ -20,7 +19,7 @@ func (s *Server) readSSHAuthorizedKeys() (map[string]map[string]bool, error) {
 
 	authorizedKeysMap := map[string]map[string]bool{}
 
-	files, err := filepath.Glob(path.Join(s.c.BaseDir, s.c.AuthorizedKeysDir, "*"))
+	files, err := filepath.Glob(path.Join(authorizedKeysDir, "*"))
 	for _, authorizedKeyFile := range files {
 		_, user := filepath.Split(authorizedKeyFile)
 
@@ -53,9 +52,8 @@ func (s *Server) readSSHAuthorizedKeys() (map[string]map[string]bool, error) {
 	return authorizedKeysMap, nil
 }
 
-func (s *Server) readSSHHostKey() (ssh.Signer, error) {
-	hostKeyFile := path.Join(s.c.BaseDir, s.c.HostKeyFile)
-	_, err := os.Stat(hostKeyFile)
+func ReadSSHHostKey(hostKeyFileName string) (ssh.Signer, error) {
+	_, err := os.Stat(hostKeyFileName)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("ssh: host key file not found")
 	}
@@ -64,7 +62,7 @@ func (s *Server) readSSHHostKey() (ssh.Signer, error) {
 		return nil, err
 	}
 
-	hostKeyBytes, err := ioutil.ReadFile(hostKeyFile)
+	hostKeyBytes, err := ioutil.ReadFile(hostKeyFileName)
 	if err != nil {
 		log.Fatal("Failed to load hostKey key: ", err)
 	}
