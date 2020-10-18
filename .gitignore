@@ -2,3 +2,4 @@
 
 /api/**/*.pb.go
 /_bastion
+/_server

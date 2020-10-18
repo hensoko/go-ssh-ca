@@ -1,39 +1,32 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"go-ssh-ca/api/server"
 	"log"
-	"net"
+	"os"
+	"path"
 
-	"google.golang.org/grpc"
+	"github.com/hensoko/go-ssh-ca/grpc"
 )
 
 func main() {
-	lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", 7777))
+	homeDir := os.Getenv("HOME")
+	if len(homeDir) == 0 {
+		log.Fatalf("ssh: cannot find homedir")
+	}
+
+	// TODO: use path from flag
+	baseDir := path.Join(homeDir, "projects", "priv", "go-ssh-ca", "_bastion")
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		log.Fatalf("base directory %q does not exist", baseDir)
+	}
+
+	// TODO: get listen address and port from flags
+	s := grpc.NewServer(&grpc.ServerConfig{
+		BaseDir:         path.Join(os.Getenv("HOME"), "projects/priv/go-ssh-ca/_server"),
+		HostKeyFileName: "id_rsa-ca",
+	})
+	err := s.ListenAndServe("127.0.0.1:7777")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	} // create a server instance
-
-	log.Println("listening on 127.0.0.1:7777")
-
-	s := grpc.NewServer()
-
-	server.RegisterServerServer(s, NewServer())
-
-	s.Serve(lis)
-	defer s.Stop()
-}
-
-type Server struct {
-	server.UnimplementedServerServer
-}
-
-func NewServer() *Server {
-	return &Server{}
-}
-
-func (s Server) SignUserPublicKey(ctx context.Context, in *server.SignUserPublicKeyRequest) (*server.SignUserPublicKeyResponse, error) {
-	panic("implement me")
+		log.Fatalf(err.Error())
+	}
 }
