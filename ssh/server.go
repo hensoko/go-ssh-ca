@@ -1,11 +1,15 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"path"
 	"strings"
+
+	"github.com/hensoko/go-ssh-ca/api/server"
+	"google.golang.org/grpc"
 
 	"github.com/hensoko/go-ssh-ca/ca"
 	"golang.org/x/crypto/ssh"
@@ -177,6 +181,12 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		}
 
 		// TODO: sign request and create response
+		log.Print(sr.String())
+
+		err = initGrpc("127.0.0.1", "username", sr.String())
+		if err != nil {
+			panic(err)
+		}
 
 		closeWrite("blablablabla", channel)
 		return
@@ -193,4 +203,33 @@ func closeWrite(msg string, channel ssh.Channel) {
 	channel.Close()
 
 	log.Println("Channel closed")
+}
+
+func initGrpc(ip string, username string, requestData string) error {
+	var dialOpts []grpc.DialOption
+	dialOpts = append(dialOpts, grpc.WithInsecure())
+	conn, err := grpc.Dial("127.0.0.1:7777", dialOpts...)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	signerClient := server.NewServerClient(conn)
+
+	var callOpts []grpc.CallOption
+	resp, err := signerClient.SignUserPublicKey(
+		context.Background(),
+		&server.SignUserPublicKeyRequest{
+			Ip:          ip,
+			Username:    username,
+			RequestData: requestData,
+		},
+		callOpts...,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%+v", resp)
+	return nil
 }

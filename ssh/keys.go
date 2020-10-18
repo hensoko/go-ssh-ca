@@ -67,12 +67,12 @@ func ReadSSHPrivateKey(path string) (ssh.Signer, error) {
 
 	hostKeyBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Fatal("Failed to load private key: ", err)
+		return nil, fmt.Errorf("failed to load private key: %s", err)
 	}
 
 	hostKey, err := ssh.ParsePrivateKey(hostKeyBytes)
 	if err != nil {
-		log.Fatal("Failed to parse private key: ", err)
+		return nil, fmt.Errorf("failed to parse private key: %s", err)
 	}
 
 	return hostKey, nil

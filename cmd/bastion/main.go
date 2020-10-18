@@ -1,15 +1,11 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"os"
 	"path"
 
-	signerServer "github.com/hensoko/go-ssh-ca/api/server"
 	"github.com/hensoko/go-ssh-ca/ssh"
-	"google.golang.org/grpc"
 )
 
 func main() {
@@ -24,11 +20,6 @@ func main() {
 		log.Fatalf("base directory %q does not exist", baseDir)
 	}
 
-	err := initGrpc()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
-
 	// TODO: merge ssh.server package with ssh package
 	s := ssh.NewServer(ssh.ServerConfig{
 		AuthorizedKeysDir: "authorized_keys",
@@ -37,37 +28,8 @@ func main() {
 	})
 
 	// TODO: get listen address and port from flags
-	err = s.ListenAndServe("127.0.0.1:2022")
+	err := s.ListenAndServe("127.0.0.1:2022")
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-}
-
-func initGrpc() error {
-	var dialOpts []grpc.DialOption
-	dialOpts = append(dialOpts, grpc.WithInsecure())
-	conn, err := grpc.Dial("127.0.0.1:7777", dialOpts...)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	signerClient := signerServer.NewServerClient(conn)
-
-	var callOpts []grpc.CallOption
-	resp, err := signerClient.SignUserPublicKey(
-		context.Background(),
-		&signerServer.SignUserPublicKeyRequest{
-			Ip:          "127.0.0.1",
-			Username:    "hensoko",
-			RequestData: "test.123",
-		},
-		callOpts...,
-	)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("%+v", resp)
-	return nil
 }

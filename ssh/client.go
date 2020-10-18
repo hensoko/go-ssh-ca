@@ -90,14 +90,8 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return fmt.Errorf("ssh: unable to sign public key: %s", err)
 	}
 
-	log.Printf("Creating signing request")
-	signingRequestString, err := ca.NewSigningRequest(signer.PublicKey(), *pubKeySignature).String()
-	if err != nil {
-		return err
-	}
-
 	log.Printf("Sending signing request")
-	cmd := "sign-public-key " + signingRequestString
+	cmd := "sign-public-key " + ca.NewSigningRequest(signer.PublicKey(), *pubKeySignature).String()
 
 	stdout, err := s.StdoutPipe()
 	if err != nil {
