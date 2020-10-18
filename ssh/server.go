@@ -71,7 +71,7 @@ func (s *Server) configure() (*ssh.ServerConfig, error) {
 		return nil, err
 	}
 
-	hostKey, err := ReadSSHHostKey(path.Join(s.c.BaseDir, s.c.HostKeyFile))
+	hostKey, err := ReadSSHPrivateKey(path.Join(s.c.BaseDir, s.c.HostKeyFile))
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// ReadSSHAuthorizedKeys reads multiple authorized keys from given directory. Keys are stored in a map by username and
+// public key.
 func ReadSSHAuthorizedKeys(authorizedKeysDir string) (map[string]map[string]bool, error) {
 	_, err := os.Stat(authorizedKeysDir)
 	if os.IsNotExist(err) {
@@ -52,24 +54,25 @@ func ReadSSHAuthorizedKeys(authorizedKeysDir string) (map[string]map[string]bool
 	return authorizedKeysMap, nil
 }
 
-func ReadSSHHostKey(hostKeyFileName string) (ssh.Signer, error) {
-	_, err := os.Stat(hostKeyFileName)
+// ReadSSHPrivateKey reads a private key and returns a ssh.Signer
+func ReadSSHPrivateKey(path string) (ssh.Signer, error) {
+	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("ssh: host key file not found")
+		return nil, fmt.Errorf("ssh: private key file not found")
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	hostKeyBytes, err := ioutil.ReadFile(hostKeyFileName)
+	hostKeyBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Fatal("Failed to load hostKey key: ", err)
+		log.Fatal("Failed to load private key: ", err)
 	}
 
 	hostKey, err := ssh.ParsePrivateKey(hostKeyBytes)
 	if err != nil {
-		log.Fatal("Failed to parse hostKey key: ", err)
+		log.Fatal("Failed to parse private key: ", err)
 	}
 
 	return hostKey, nil

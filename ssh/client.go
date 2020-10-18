@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -54,20 +53,28 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 
 	// generate session key after connection is established
 	log.Printf("Generating Session Key... ")
-	sessionKeyPath, err := c.generateSessionKey()
-	defer os.Remove(sessionKeyPath)
-	defer os.Remove(sessionKeyPath + ".pub")
+	privateKey, err := rsa.GenerateKey(rand.Reader, ClientDefaultSessionKeyBits)
 
+	// create temporary file and close it as we use ioutil package to write content to it
+	f, err := ioutil.TempFile(c.c.BaseDir, fmt.Sprintf("ssh-session-key_%d_", time.Now().Unix()))
 	if err != nil {
-		log.Println("Failed")
 		return err
 	}
-	log.Println("Successful")
 
-	log.Printf("Reading Session Key... ")
-	sessionKey, err := c.readSessionKey(sessionKeyPath)
+	privateKeyFileName := path.Base(f.Name())
+	publicKeyFileName := privateKeyFileName + ".pub"
+	f.Close()
+
+	// store session key on disk
+	err = c.storeKeyPair(privateKey, c.c.BaseDir, privateKeyFileName, publicKeyFileName)
 	if err != nil {
-		log.Println("Failed")
+		return err
+	}
+
+	// TODO: delete session key files after usage
+
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
 		return err
 	}
 	log.Println("Successful")
@@ -77,14 +84,14 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return err
 	}
 
-	pubKey := sessionKey.PublicKey()
-	pubKeySignature, err := sessionKey.Sign(rand.Reader, pubKey.Marshal())
+	pubKey := signer.PublicKey()
+	pubKeySignature, err := signer.Sign(rand.Reader, pubKey.Marshal())
 	if err != nil {
 		return fmt.Errorf("ssh: unable to sign public key: %s", err)
 	}
 
 	log.Printf("Creating signing request")
-	signingRequestString, err := ca.NewSigningRequest(sessionKey.PublicKey(), *pubKeySignature).String()
+	signingRequestString, err := ca.NewSigningRequest(signer.PublicKey(), *pubKeySignature).String()
 	if err != nil {
 		return err
 	}
@@ -153,13 +160,7 @@ func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
 		}
 
 		log.Printf("Reading %s\n", keyFile)
-		privateKeyBytes, err := ioutil.ReadFile(keyFile)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		privateKey, err := ssh.ParsePrivateKey(privateKeyBytes)
+		privateKey, err := ReadSSHPrivateKey(keyFile)
 		if err != nil {
 			log.Println(err)
 			continue
@@ -175,62 +176,33 @@ func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
 	return privateKeys, nil
 }
 
-func (c *Client) generateSessionKey() (sessionKeyFilename string, err error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, ClientDefaultSessionKeyBits)
+func (c *Client) storeKeyPair(key *rsa.PrivateKey, baseDir string, privateKeyFileName string, publicKeyFileName string) error {
+	err := ioutil.WriteFile(
+		path.Join(baseDir, privateKeyFileName),
+		pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "RSA PRIVATE KEY",
+				Bytes: x509.MarshalPKCS1PrivateKey(key),
+			},
+		),
+		0600, // private key must only be read by owner
+	)
 	if err != nil {
-		return "", err
-	}
-
-	privBlock := pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
-	}
-
-	// create temporary file and close it as we use ioutil package to write content to it
-	f, err := ioutil.TempFile(c.c.BaseDir, fmt.Sprintf("ssh-session-key_%d_", time.Now().Unix()))
-	if err != nil {
-		return "", err
-	}
-
-	sessionKeyFilename = f.Name()
-	publicKeyFilename := sessionKeyFilename + ".pub"
-	f.Close()
-
-	err = ioutil.WriteFile(sessionKeyFilename, pem.EncodeToMemory(&privBlock), 0600)
-	if err != nil {
-		return "", err
+		return err
 	}
 
 	// create ssh public key from private key
-	publicRsaKey, err := ssh.NewPublicKey(privateKey.Public())
+	publicRsaKey, err := ssh.NewPublicKey(key.Public())
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// marshal to authorized keys format
 	pubKeyBytes := ssh.MarshalAuthorizedKey(publicRsaKey)
-	err = ioutil.WriteFile(publicKeyFilename, pubKeyBytes, 0644)
-	if err != nil {
-		return "", err
-	}
 
-	return sessionKeyFilename, nil
-}
-
-func (c *Client) readSessionKey(sessionKeyPath string) (ssh.Signer, error) {
-	_, err := os.Stat(sessionKeyPath)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("session key file %q does not exist", sessionKeyPath)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	privateKeyBytes, err := ioutil.ReadFile(sessionKeyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	return ssh.ParsePrivateKey(privateKeyBytes)
+	return ioutil.WriteFile(
+		path.Join(baseDir, publicKeyFileName),
+		pubKeyBytes,
+		0644,
+	)
 }
