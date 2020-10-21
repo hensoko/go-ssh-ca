@@ -11,7 +11,6 @@ import (
 	"github.com/hensoko/go-ssh-ca/api/server"
 	"google.golang.org/grpc"
 
-	"github.com/hensoko/go-ssh-ca/ca"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -165,7 +164,8 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		log.Printf("Got sign-public-key request")
 
 		// Parse signing request
-		sr, err := ca.NewSigningRequestFromString(payload)
+		// TODO: use real data
+		sr, err := NewRequestFromClientRequest("ip", "username", []byte(payload))
 		if err != nil {
 			log.Printf("Cannot unmarshal payload: %s", err)
 			closeWrite("ssh: invalid request: invalid payload", channel)
@@ -173,7 +173,7 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		}
 
 		// Verify signature against public key
-		err = sr.PublicKey.Verify(sr.PublicKey.Marshal(), &sr.Signature)
+		err = sr.PublicKey.Verify(sr.PublicKey.Marshal(), sr.Signature)
 		if err != nil {
 			log.Printf("ssh: invalid request: signature invalid")
 			closeWrite("ssh: invalid request: invalid signature", channel)
@@ -181,9 +181,15 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		}
 
 		// TODO: sign request and create response
-		log.Print(sr.String())
 
-		err = initGrpc("127.0.0.1", "username", sr.String())
+		payload, err := sr.PayloadBytes()
+		if err != nil {
+			panic(err)
+		}
+
+		log.Print(payload)
+
+		err = initGrpc("127.0.0.1", "username", payload)
 		if err != nil {
 			panic(err)
 		}
@@ -205,7 +211,7 @@ func closeWrite(msg string, channel ssh.Channel) {
 	log.Println("Channel closed")
 }
 
-func initGrpc(ip string, username string, requestData string) error {
+func initGrpc(ip string, username string, requestData []byte) error {
 	var dialOpts []grpc.DialOption
 	dialOpts = append(dialOpts, grpc.WithInsecure())
 	conn, err := grpc.Dial("127.0.0.1:7777", dialOpts...)

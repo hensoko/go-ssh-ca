@@ -22,12 +22,12 @@ message PingResponse {
 message SignUserPublicKeyRequest {
   string ip = 1;
   string username = 2;
-  string request_data = 3;
+  bytes request_data = 3;
 }
 
 message SignUserPublicKeyResponse {
   Error error = 1;
-  string certificate = 2;
+  bytes response_data = 2;
 }
 
 service Server {

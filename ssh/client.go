@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hensoko/go-ssh-ca/ca"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -51,47 +50,34 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 
 	log.Printf("Connected to %s\n", remoteAddress)
 
-	// generate session key after connection is established
-	log.Printf("Generating Session Key... ")
-	privateKey, err := rsa.GenerateKey(rand.Reader, ClientDefaultSessionKeyBits)
-
-	// create temporary file and close it as we use ioutil package to write content to it
-	f, err := ioutil.TempFile(c.c.BaseDir, fmt.Sprintf("ssh-session-key_%d_", time.Now().Unix()))
+	// generate session key
+	sessionSigner, err := c.generateSessionKey()
 	if err != nil {
 		return err
 	}
-
-	privateKeyFileName := path.Base(f.Name())
-	publicKeyFileName := privateKeyFileName + ".pub"
-	f.Close()
-
-	// store session key on disk
-	err = c.storeKeyPair(privateKey, c.c.BaseDir, privateKeyFileName, publicKeyFileName)
-	if err != nil {
-		return err
-	}
-
-	// TODO: delete session key files after usage
-
-	signer, err := ssh.NewSignerFromKey(privateKey)
-	if err != nil {
-		return err
-	}
-	log.Println("Successful")
 
 	s, err := client.NewSession() // Create new SSH session
 	if err != nil {
 		return err
 	}
 
-	pubKey := signer.PublicKey()
-	pubKeySignature, err := signer.Sign(rand.Reader, pubKey.Marshal())
+	pubKey := sessionSigner.PublicKey()
+	pubKeySignature, err := sessionSigner.Sign(rand.Reader, pubKey.Marshal())
 	if err != nil {
 		return fmt.Errorf("ssh: unable to sign public key: %s", err)
 	}
 
+	req := SigningRequest{
+		PublicKey: sessionSigner.PublicKey(),
+		Signature: pubKeySignature,
+	}
+	payload, err := req.PayloadBytes()
+	if err != nil {
+		return err
+	}
+
 	log.Printf("Sending signing request")
-	cmd := "sign-public-key " + ca.NewSigningRequest(signer.PublicKey(), *pubKeySignature).String()
+	cmd := "sign-public-key " + string(payload)
 
 	stdout, err := s.StdoutPipe()
 	if err != nil {
@@ -138,6 +124,37 @@ func (c *Client) configure(username string) (*ssh.ClientConfig, error) {
 	}
 
 	return config, nil
+}
+
+func (c *Client) generateSessionKey() (ssh.Signer, error) {
+	// generate session key after connection is established
+	log.Printf("Generating Session Key... ")
+	privateKey, err := rsa.GenerateKey(rand.Reader, ClientDefaultSessionKeyBits)
+
+	// create temporary file and close it as we use ioutil package to write content to it
+	f, err := ioutil.TempFile(c.c.BaseDir, fmt.Sprintf("ssh-session-key_%d_", time.Now().Unix()))
+	if err != nil {
+		return nil, err
+	}
+
+	privateKeyFileName := path.Base(f.Name())
+	publicKeyFileName := privateKeyFileName + ".pub"
+	f.Close()
+
+	// store session key on disk
+	err = c.storeKeyPair(privateKey, c.c.BaseDir, privateKeyFileName, publicKeyFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: delete session key files after usage
+
+	signer, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("Successful")
+	return signer, nil
 }
 
 func (c *Client) readSSHPrivateKeys() ([]ssh.Signer, error) {
