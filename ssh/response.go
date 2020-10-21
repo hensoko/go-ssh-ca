@@ -15,9 +15,9 @@ type SigningResponse struct {
 }
 
 func NewFromGrpcResponse() (*SigningResponse, error) {
-
+	return nil, nil
 }
 
 func (s *SigningResponse) Bytes() []byte {
-
+	return nil
 }
