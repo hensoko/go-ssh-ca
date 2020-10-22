@@ -76,8 +76,12 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return err
 	}
 
-	log.Printf("Sending signing request")
 	cmd := "sign-public-key " + string(payload)
+
+	_, err = NewRequestFromClientRequest("ip", "username", payload)
+	if err != nil {
+		panic(err)
+	}
 
 	stdout, err := s.StdoutPipe()
 	if err != nil {

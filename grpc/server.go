@@ -6,9 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/hensoko/go-ssh-ca/ssh"
-
 	"github.com/hensoko/go-ssh-ca/api/server"
+	"github.com/hensoko/go-ssh-ca/ssh"
 	"google.golang.org/grpc"
 )
 

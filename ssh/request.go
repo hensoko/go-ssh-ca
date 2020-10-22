@@ -2,11 +2,10 @@ package ssh
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
+	"log"
 
 	"github.com/hensoko/go-ssh-ca/api/server"
-
 	"golang.org/x/crypto/ssh"
 )
 
@@ -67,42 +66,50 @@ func (s *SigningRequest) PayloadBytes() ([]byte, error) {
 		return nil, fmt.Errorf("PublicKey or Signature not set")
 	}
 
-	keyBytes := s.PublicKey.Marshal()
-	publicKey := make([]byte, base64.StdEncoding.EncodedLen(len(keyBytes)))
-	base64.StdEncoding.Encode(publicKey, keyBytes)
+	// encode public key
+	publicKeyBase64 := encodeBase64(s.PublicKey.Marshal())
 
-	format := []byte(s.Signature.Format)
-	blob := make([]byte, base64.StdEncoding.EncodedLen(len(s.Signature.Blob)))
-	base64.StdEncoding.Encode(blob, s.Signature.Blob)
+	// encode blob
+	blobBase64 := encodeBase64(s.Signature.Blob)
 
-	signatureBytes := append(format, signatureFormatBlobSeparator)
-	signatureBytes = append(signatureBytes, blob...)
+	// create signature
+	signatureBytes := append([]byte(s.Signature.Format), signatureFormatBlobSeparator)
+	signatureBytes = append(signatureBytes, blobBase64...)
 
-	out := append(keyBytes, publicKeySignatureSeparator)
-	out = append(out, signatureBytes...)
+	// encode signature
+	signatureBase64 := encodeBase64(signatureBytes)
+
+	out := append(publicKeyBase64, publicKeySignatureSeparator)
+	out = append(out, signatureBase64...)
 
 	return out, nil
 }
 
 func parsePayload(b []byte) (ssh.PublicKey, *ssh.Signature, error) {
-	dataSplt := bytes.Split(b, []byte{publicKeySignatureSeparator})
+	dataSplt := bytes.SplitN(b, []byte{publicKeySignatureSeparator}, 2)
+
 	if len(dataSplt) != 2 {
 		return nil, nil, fmt.Errorf("cannot parse request string: invalid format")
 	}
 
-	publicKeyBytes := make([]byte, base64.StdEncoding.DecodedLen(len(dataSplt[0])))
-	_, err := base64.StdEncoding.Decode(publicKeyBytes, dataSplt[0])
+	publicKeyBase64 := dataSplt[0]
+	signatureBase64 := dataSplt[1]
+
+	publicKeyBytes, err := decodeBase64(publicKeyBase64)
 	if err != nil {
+		log.Printf("decoding public key failed")
 		return nil, nil, err
 	}
 
 	publicKey, err := ssh.ParsePublicKey(publicKeyBytes)
 	if err != nil {
+		log.Printf("parsing public key failed")
 		return nil, nil, err
 	}
 
-	signature, err := parseSignature(dataSplt[1])
+	signature, err := parseSignature(signatureBase64)
 	if err != nil {
+		log.Printf("parsing signature failed")
 		return nil, nil, err
 	}
 
@@ -110,19 +117,18 @@ func parsePayload(b []byte) (ssh.PublicKey, *ssh.Signature, error) {
 }
 
 func parseSignature(b []byte) (*ssh.Signature, error) {
-	signatureBytes := make([]byte, base64.StdEncoding.DecodedLen(len(b)))
-	_, err := base64.StdEncoding.Decode(signatureBytes, b)
+	signatureBytes, err := decodeBase64(b)
 	if err != nil {
 		return nil, err
 	}
 
-	splt := bytes.Split(signatureBytes, []byte{signatureFormatBlobSeparator})
+	splt := bytes.SplitN(signatureBytes, []byte{signatureFormatBlobSeparator}, 2)
+
 	if len(splt) != 2 {
 		return nil, fmt.Errorf("cannot parse request string: invalid format")
 	}
 
-	signatureBlob := make([]byte, base64.StdEncoding.DecodedLen(len(splt[1])))
-	_, err = base64.StdEncoding.Decode(signatureBytes, splt[1])
+	signatureBlob, err := decodeBase64(splt[1])
 	if err != nil {
 		return nil, err
 	}

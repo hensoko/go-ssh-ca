@@ -1,12 +1,12 @@
 package ssh
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"path"
-	"strings"
 
 	"github.com/hensoko/go-ssh-ca/api/server"
 	"google.golang.org/grpc"
@@ -131,7 +131,6 @@ func (s *Server) handleChannel(newChannel ssh.NewChannel) {
 				continue
 			}
 
-			log.Print("Handline exec request")
 			s.handleExec(channel, req)
 		}
 	}(requests)
@@ -144,28 +143,24 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		return
 	}
 
-	// sanitize payload
-	pl := string(req.Payload[4:])
-	pl = strings.TrimSpace(pl)
-
 	// split request payload to separate command from command payload
-	payloadSplt := strings.Split(pl, " ")
+	payloadSplt := bytes.SplitN(req.Payload[4:], []byte(" "), 2)
 	if len(payloadSplt) != 2 {
 		log.Printf("ssh: invalid request length: %d", len(payloadSplt))
 		closeWrite("ssh: invalid request: wrong length", channel)
 		return
 	}
 
-	cmd := strings.TrimSpace(payloadSplt[0])
-	payload := strings.TrimSpace(payloadSplt[1])
+	cmd := bytes.TrimSpace(payloadSplt[0])
+	payload := bytes.TrimSpace(payloadSplt[1])
 
-	switch cmd {
+	switch string(cmd) {
 	case "sign-public-key":
 		log.Printf("Got sign-public-key request")
 
 		// Parse signing request
 		// TODO: use real data
-		sr, err := NewRequestFromClientRequest("ip", "username", []byte(payload))
+		sr, err := NewRequestFromClientRequest("ip", "username", payload)
 		if err != nil {
 			log.Printf("Cannot unmarshal payload: %s", err)
 			closeWrite("ssh: invalid request: invalid payload", channel)
@@ -186,8 +181,6 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		if err != nil {
 			panic(err)
 		}
-
-		log.Print(payload)
 
 		err = initGrpc("127.0.0.1", "username", payload)
 		if err != nil {
