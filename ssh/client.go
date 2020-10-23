@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -67,21 +68,19 @@ func (c *Client) Dial(username string, remoteAddress string) error {
 		return fmt.Errorf("ssh: unable to sign public key: %s", err)
 	}
 
-	req := SigningRequest{
+	req := &SigningRequest{
 		PublicKey: sessionSigner.PublicKey(),
 		Signature: pubKeySignature,
 	}
-	payload, err := req.PayloadBytes()
+
+	payload, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
 
-	cmd := "sign-public-key " + string(payload)
+	log.Printf("%s\n", payload)
 
-	_, err = NewRequestFromClientRequest("ip", "username", payload)
-	if err != nil {
-		panic(err)
-	}
+	cmd := "sign-public-key " + string(payload)
 
 	stdout, err := s.StdoutPipe()
 	if err != nil {

@@ -2,9 +2,13 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"time"
+
+	ssh2 "golang.org/x/crypto/ssh"
 
 	"github.com/hensoko/go-ssh-ca/api/server"
 	"github.com/hensoko/go-ssh-ca/ssh"
@@ -48,20 +52,43 @@ func (s *Server) ListenAndServe(listenAddress string) error {
 // TODO: instead of returning error create response object containing server.Error
 func (s *Server) SignUserPublicKey(ctx context.Context, in *server.SignUserPublicKeyRequest) (*server.SignUserPublicKeyResponse, error) {
 	// parse request
-	req, err := ssh.NewRequestFromGrpcRequest(in)
+	req := &ssh.SigningRequest{}
+	err := json.Unmarshal(in.RequestData, req)
 	if err != nil {
-		log.Printf("SignUserPublicKey failed: parsing RequestData failed: " + err.Error())
+		log.Printf("Failed to unmarshal request data")
 		return nil, err
 	}
 
+	log.Printf("Incoming signing request from %s (%s)", req.Username, req.IPAddress)
+
+	signature := &ssh2.Signature{}
+	err = json.Unmarshal(in.Signature, signature)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("%+v", req)
+
+	// verify signature
+	// TODO SECURITY: ensure public key belongs to bastion
+	err = req.PublicKey.Verify(in.RequestData, signature)
+	if err != nil {
+		log.Printf("ssh: invalid request: signature invalid")
+		return nil, fmt.Errorf("ssh: invalid request: invalid signature")
+	}
+
 	// sign certificate
-	log.Printf("Signing certificate for %q from %q", in.Username, in.Ip)
+	log.Printf("Signing certificate for %q from %q", req.Username, req.IPAddress)
 	res, err := s.Signer.HandleRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
-	//TODO: create response data analog to request data
+	// marshal response
+	resJson, err := json.Marshal(res)
+	if err != nil {
+		return nil, err
+	}
 
 	// prepare and return response object
 	out := &server.SignUserPublicKeyResponse{
@@ -69,7 +96,7 @@ func (s *Server) SignUserPublicKey(ctx context.Context, in *server.SignUserPubli
 			Code:    0,
 			Message: "success",
 		},
-		ResponseData: res.Bytes(),
+		ResponseData: resJson,
 	}
 
 	return out, nil

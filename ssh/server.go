@@ -3,6 +3,8 @@ package ssh
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -62,7 +64,7 @@ func (s *Server) ListenAndServe(listenAddress string) error {
 
 		// The incoming Request channel must be serviced.
 		go ssh.DiscardRequests(reqs)
-		go s.handleChannels(chans)
+		go s.handleUserChannels(conn.Permissions.Extensions["client-ip"], conn.User(), chans)
 	}
 
 	return nil
@@ -84,14 +86,19 @@ func (s *Server) configure() (*ssh.ServerConfig, error) {
 	config := &ssh.ServerConfig{
 		// Remove to disable public key auth.
 		PublicKeyCallback: func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
+			//TODO: this method can be used right now to check for existing usernames
 			if authorizedKeysMap[c.User()] == nil {
 				return nil, fmt.Errorf("unknown public key for %s", c.User())
 			}
 
 			if authorizedKeysMap[c.User()][string(pubKey.Marshal())] {
 				return &ssh.Permissions{
-					// Record the public key used for authentication.
+
 					Extensions: map[string]string{
+						// Record the ip address used for authentication.
+						"client-ip": c.LocalAddr().String(),
+
+						// Record the public key used for authentication.
 						"pubkey-fp": ssh.FingerprintSHA256(pubKey),
 					},
 				}, nil
@@ -105,16 +112,17 @@ func (s *Server) configure() (*ssh.ServerConfig, error) {
 	return config, nil
 }
 
-func (s *Server) handleChannels(chans <-chan ssh.NewChannel) {
+func (s *Server) handleUserChannels(ipAddress string, username string, chans <-chan ssh.NewChannel) {
 	// Service the incoming Channel channel.
 	for newChannel := range chans {
-		go s.handleChannel(newChannel)
+		go s.handleUserChannel(ipAddress, username, newChannel)
 	}
 }
 
-func (s *Server) handleChannel(newChannel ssh.NewChannel) {
+func (s *Server) handleUserChannel(ipAddress string, username string, newChannel ssh.NewChannel) {
 	if newChannel.ChannelType() != "session" {
 		newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+		return
 	}
 
 	// accept session channel
@@ -131,12 +139,12 @@ func (s *Server) handleChannel(newChannel ssh.NewChannel) {
 				continue
 			}
 
-			s.handleExec(channel, req)
+			s.handleUserExec(ipAddress, username, channel, req)
 		}
 	}(requests)
 }
 
-func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
+func (s *Server) handleUserExec(ipAddress string, username string, channel ssh.Channel, req *ssh.Request) {
 	if len(req.Payload) == 0 {
 		log.Print("ssh: invalid request: empty payload")
 		closeWrite("ssh: invalid request: empty payload", channel)
@@ -159,15 +167,28 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 		log.Printf("Got sign-public-key request")
 
 		// Parse signing request
-		// TODO: use real data
-		sr, err := NewRequestFromClientRequest("ip", "username", payload)
+		var sr SigningRequest
+		err := json.Unmarshal(payload, &sr)
 		if err != nil {
 			log.Printf("Cannot unmarshal payload: %s", err)
 			closeWrite("ssh: invalid request: invalid payload", channel)
 			return
 		}
 
+		if sr.PublicKey == nil {
+			log.Printf("Cannot unmarshal payload: %s", err)
+			closeWrite("ssh: invalid request: no public key", channel)
+			return
+		}
+
+		if sr.Signature == nil {
+			log.Printf("Cannot unmarshal payload: %s", err)
+			closeWrite("ssh: invalid request: no signature", channel)
+			return
+		}
+
 		// Verify signature against public key
+		// TODO SECURITY: ensure public key belongs to authenticating user
 		err = sr.PublicKey.Verify(sr.PublicKey.Marshal(), sr.Signature)
 		if err != nil {
 			log.Printf("ssh: invalid request: signature invalid")
@@ -175,14 +196,12 @@ func (s *Server) handleExec(channel ssh.Channel, req *ssh.Request) {
 			return
 		}
 
+		sr.IPAddress = ipAddress
+		sr.Username = username
+
 		// TODO: sign request and create response
-
-		payload, err := sr.PayloadBytes()
-		if err != nil {
-			panic(err)
-		}
-
-		err = initGrpc("127.0.0.1", "username", payload)
+		log.Printf("Making grpc request")
+		err = s.makeGrpcSigningRequest(&sr)
 		if err != nil {
 			panic(err)
 		}
@@ -204,7 +223,7 @@ func closeWrite(msg string, channel ssh.Channel) {
 	log.Println("Channel closed")
 }
 
-func initGrpc(ip string, username string, requestData []byte) error {
+func (s *Server) makeGrpcSigningRequest(req *SigningRequest) error {
 	var dialOpts []grpc.DialOption
 	dialOpts = append(dialOpts, grpc.WithInsecure())
 	conn, err := grpc.Dial("127.0.0.1:7777", dialOpts...)
@@ -215,13 +234,34 @@ func initGrpc(ip string, username string, requestData []byte) error {
 
 	signerClient := server.NewServerClient(conn)
 
+	reqJson, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("reading private key")
+	hostKey, err := ReadSSHPrivateKey(path.Join(s.c.BaseDir, s.c.HostKeyFile))
+	if err != nil {
+		return err
+	}
+
+	log.Printf("signing")
+	signature, err := hostKey.Sign(rand.Reader, reqJson)
+	if err != nil {
+		return err
+	}
+	signatureJson, err := json.Marshal(signature)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("sending")
 	var callOpts []grpc.CallOption
 	resp, err := signerClient.SignUserPublicKey(
 		context.Background(),
 		&server.SignUserPublicKeyRequest{
-			Ip:          ip,
-			Username:    username,
-			RequestData: requestData,
+			RequestData: reqJson,
+			Signature:   signatureJson,
 		},
 		callOpts...,
 	)
