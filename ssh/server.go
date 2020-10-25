@@ -176,13 +176,13 @@ func (s *Server) handleUserExec(ipAddress string, username string, channel ssh.C
 		}
 
 		if sr.PublicKey == nil {
-			log.Printf("Cannot unmarshal payload: %s", err)
+			log.Printf("empty publickey")
 			closeWrite("ssh: invalid request: no public key", channel)
 			return
 		}
 
 		if sr.Signature == nil {
-			log.Printf("Cannot unmarshal payload: %s", err)
+			log.Printf("empty signature")
 			closeWrite("ssh: invalid request: no signature", channel)
 			return
 		}
@@ -232,8 +232,6 @@ func (s *Server) makeGrpcSigningRequest(req *SigningRequest) error {
 	}
 	defer conn.Close()
 
-	signerClient := server.NewServerClient(conn)
-
 	reqJson, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -257,7 +255,7 @@ func (s *Server) makeGrpcSigningRequest(req *SigningRequest) error {
 
 	log.Printf("sending")
 	var callOpts []grpc.CallOption
-	resp, err := signerClient.SignUserPublicKey(
+	resp, err := server.NewServerClient(conn).SignUserPublicKey(
 		context.Background(),
 		&server.SignUserPublicKeyRequest{
 			RequestData: reqJson,

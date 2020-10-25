@@ -67,13 +67,17 @@ func (s *Server) SignUserPublicKey(ctx context.Context, in *server.SignUserPubli
 		return nil, err
 	}
 
-	log.Printf("%+v", req)
+	// TODO: bastion public key has to be provisioned first
+	bastionPrivateKey, err := ssh.ReadSSHPrivateKey("/home/hensoko/projects/priv/go-ssh-ca/_bastion/bastion_host_key")
+	if err != nil {
+		return nil, err
+	}
 
 	// verify signature
-	// TODO SECURITY: ensure public key belongs to bastion
-	err = req.PublicKey.Verify(in.RequestData, signature)
+	// TODO SECURITY: ensure public key belongs to intermediate bastion
+	err = bastionPrivateKey.PublicKey().Verify(in.RequestData, signature)
 	if err != nil {
-		log.Printf("ssh: invalid request: signature invalid")
+		log.Printf("ssh: invalid request: invalid signature: %s", err)
 		return nil, fmt.Errorf("ssh: invalid request: invalid signature")
 	}
 
