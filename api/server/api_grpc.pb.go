@@ -17,6 +17,11 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ServerClient interface {
+	// Bastion
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingRequest, error)
+	BastionCheckRegistration(ctx context.Context, in *BastionCheckRegistrationRequest, opts ...grpc.CallOption) (*BastionRegisterRequest, error)
+	BastionRegister(ctx context.Context, in *BastionRegisterRequest, opts ...grpc.CallOption) (*BastionRegisterResponse, error)
+	// Client
 	SignUserPublicKey(ctx context.Context, in *SignUserPublicKeyRequest, opts ...grpc.CallOption) (*SignUserPublicKeyResponse, error)
 }
 
@@ -26,6 +31,33 @@ type serverClient struct {
 
 func NewServerClient(cc grpc.ClientConnInterface) ServerClient {
 	return &serverClient{cc}
+}
+
+func (c *serverClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingRequest, error) {
+	out := new(PingRequest)
+	err := c.cc.Invoke(ctx, "/api.Server/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serverClient) BastionCheckRegistration(ctx context.Context, in *BastionCheckRegistrationRequest, opts ...grpc.CallOption) (*BastionRegisterRequest, error) {
+	out := new(BastionRegisterRequest)
+	err := c.cc.Invoke(ctx, "/api.Server/BastionCheckRegistration", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serverClient) BastionRegister(ctx context.Context, in *BastionRegisterRequest, opts ...grpc.CallOption) (*BastionRegisterResponse, error) {
+	out := new(BastionRegisterResponse)
+	err := c.cc.Invoke(ctx, "/api.Server/BastionRegister", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *serverClient) SignUserPublicKey(ctx context.Context, in *SignUserPublicKeyRequest, opts ...grpc.CallOption) (*SignUserPublicKeyResponse, error) {
@@ -41,6 +73,11 @@ func (c *serverClient) SignUserPublicKey(ctx context.Context, in *SignUserPublic
 // All implementations must embed UnimplementedServerServer
 // for forward compatibility
 type ServerServer interface {
+	// Bastion
+	Ping(context.Context, *PingRequest) (*PingRequest, error)
+	BastionCheckRegistration(context.Context, *BastionCheckRegistrationRequest) (*BastionRegisterRequest, error)
+	BastionRegister(context.Context, *BastionRegisterRequest) (*BastionRegisterResponse, error)
+	// Client
 	SignUserPublicKey(context.Context, *SignUserPublicKeyRequest) (*SignUserPublicKeyResponse, error)
 	mustEmbedUnimplementedServerServer()
 }
@@ -49,6 +86,15 @@ type ServerServer interface {
 type UnimplementedServerServer struct {
 }
 
+func (UnimplementedServerServer) Ping(context.Context, *PingRequest) (*PingRequest, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedServerServer) BastionCheckRegistration(context.Context, *BastionCheckRegistrationRequest) (*BastionRegisterRequest, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BastionCheckRegistration not implemented")
+}
+func (UnimplementedServerServer) BastionRegister(context.Context, *BastionRegisterRequest) (*BastionRegisterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BastionRegister not implemented")
+}
 func (UnimplementedServerServer) SignUserPublicKey(context.Context, *SignUserPublicKeyRequest) (*SignUserPublicKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SignUserPublicKey not implemented")
 }
@@ -63,6 +109,60 @@ type UnsafeServerServer interface {
 
 func RegisterServerServer(s *grpc.Server, srv ServerServer) {
 	s.RegisterService(&_Server_serviceDesc, srv)
+}
+
+func _Server_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServerServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.Server/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServerServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Server_BastionCheckRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BastionCheckRegistrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServerServer).BastionCheckRegistration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.Server/BastionCheckRegistration",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServerServer).BastionCheckRegistration(ctx, req.(*BastionCheckRegistrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Server_BastionRegister_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BastionRegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServerServer).BastionRegister(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.Server/BastionRegister",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServerServer).BastionRegister(ctx, req.(*BastionRegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Server_SignUserPublicKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -87,6 +187,18 @@ var _Server_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "api.Server",
 	HandlerType: (*ServerServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _Server_Ping_Handler,
+		},
+		{
+			MethodName: "BastionCheckRegistration",
+			Handler:    _Server_BastionCheckRegistration_Handler,
+		},
+		{
+			MethodName: "BastionRegister",
+			Handler:    _Server_BastionRegister_Handler,
+		},
 		{
 			MethodName: "SignUserPublicKey",
 			Handler:    _Server_SignUserPublicKey_Handler,

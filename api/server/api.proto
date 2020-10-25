@@ -18,6 +18,22 @@ message PingResponse {
   string message = 1;
 }
 
+message BastionCheckRegistrationRequest {
+  string machine_id = 1;
+}
+
+message BastionCheckRegistrationResponse {
+  Error error = 1;
+}
+
+message BastionRegisterRequest {
+  string id = 1;
+  string hostname = 2;
+}
+
+message BastionRegisterResponse {
+  Error error = 1;
+}
 // Client
 message SignUserPublicKeyRequest {
   bytes request_data = 1;
@@ -30,5 +46,12 @@ message SignUserPublicKeyResponse {
 }
 
 service Server {
+  // Bastion
+  rpc Ping(PingRequest) returns (PingRequest) {};
+
+  rpc BastionCheckRegistration(BastionCheckRegistrationRequest) returns (BastionRegisterRequest) {};
+  rpc BastionRegister(BastionRegisterRequest) returns (BastionRegisterResponse) {};
+
+  // Client
   rpc SignUserPublicKey(SignUserPublicKeyRequest) returns (SignUserPublicKeyResponse) {};
 }
